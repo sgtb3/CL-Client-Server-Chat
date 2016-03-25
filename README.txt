@@ -1,6 +1,6 @@
 This directory contains a multi-threaded client-server chat room application.
 The user needs to supply a file containing valid usernames and passowrds that
-hosts can login using. A default set has been provided. Do not change the file name.
+hosts can log in using. A default set has been provided. Do not change the file name.
 A Makefile is also provided.
 
 
