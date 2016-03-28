@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<web-app>
+    <servlet>
+        <servlet-name>ParserServlet</servlet-name>
+        <servlet-class>ParserServlet</servlet-class>
+    </servlet>
+    <servlet-mapping>
+        <servlet-name>ParserServlet</servlet-name>
+        <url-pattern>/ParserServlet</url-pattern>
+    </servlet-mapping>
+
+</web-app>
