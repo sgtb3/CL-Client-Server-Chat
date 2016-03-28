@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<web-app>
+    <context-param>
+        <param-name>CookieExpirationTime</param-name>
+        <param-value>30</param-value>
+    </context-param>
+    <servlet>
+        <servlet-name>CookieTester</servlet-name>
+        <servlet-class>CookieTester</servlet-class>
+    </servlet>
+    <servlet-mapping>
+        <servlet-name>CookieTester</servlet-name>
+        <url-pattern>/CookieTester</url-pattern>
+    </servlet-mapping>
+
+</web-app>
