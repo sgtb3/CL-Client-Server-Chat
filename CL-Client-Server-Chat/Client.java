@@ -8,6 +8,18 @@ import java.util.Scanner;
 
 public class Client {
 
+    // Main - args[0] = server ip address, args[1] = server port number
+    public static void main(String[] args) {
+
+        if (args.length != 2) {
+            System.out.println("Usage: Client <Server IP Address> <Server Port Number>");
+            System.exit(-1);
+        }
+
+        Client c = new Client(args[0], Integer.parseInt(args[1]));
+        c.start_client();
+    }
+    
     // Client class environment variables
     private String inactive_msg = "Logged out due to inactivity.";
     private boolean connected;
@@ -168,17 +180,5 @@ public class Client {
             }
             catch (IOException e) { /* */ }
         }
-    }
-
-    // Main - args[0] = server ip address, args[1] = server port number
-    public static void main(String[] args) {
-
-        if (args.length != 2) {
-            System.out.println("Usage: Client <Server IP Address> <Server Port Number>");
-            System.exit(-1);
-        }
-
-        Client c = new Client(args[0], Integer.parseInt(args[1]));
-        c.start_client();
     }
 }
