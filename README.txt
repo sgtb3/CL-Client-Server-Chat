@@ -1,5 +1,5 @@
 This directory contains a multi-threaded client-server chat room application.
-The user needs to supply a file containing valid usernames and passowrds that
+The user needs to supply a file containing valid usernames and passwords that
 hosts can log in using. A default set has been provided. Do not change the file name.
 A Makefile is also provided.
 
@@ -37,7 +37,7 @@ Listed below are the contents of the directory:
     Makefile:   
 
         Command 'make' compiles the .java source files using the javac compiler. 
-        Command 'make clean' will clean all auxilary .class files.
+        Command 'make clean' will clean all auxiliary .class files.
 
     user_pass.txt:
 
@@ -48,7 +48,7 @@ Listed below are the contents of the directory:
         server is started, it will hash these credentials using the SHA1 algorithm 
         and replace this file with another file with the same name. The original 
         file will be renamed to "user_pass.txt.OLD". The hash will also be formatted 
-        in hexidecimal. Credentials need to be provided in the following format:
+        in hexadecimal. Credentials need to be provided in the following format:
                 
             <username> <password>
             <username> <password>
@@ -74,8 +74,8 @@ Listed below are the contents of the directory:
         classes. The server has lists of users and threads which can be and are accessed
         by the monitor or the client threads when needed. 
 
-        The server uses synchorized methods any time modification to online/offline/blocked
-        lists is required. This will avoid concurrent thread modication errors when/if multiple
+        The server uses synchronized methods any time modification to online/offline/blocked
+        lists is required. This will avoid concurrent thread modification errors when/if multiple
         clients are connecting/disconnecting. 
 
         The server parses each line looking for the proper format for commands and will display
@@ -88,7 +88,7 @@ Listed below are the contents of the directory:
 
     Client.java:
 
-        This file represents a client. The main() method will create an instance of the
+        This file represents a client. The main method will create an instance of the
         Client class and then start the client. This class also contains a shutdown 
         hook in the event an interrupt signal is sent by the client. The constructor creates
         input/output streams with the server, authenticates the client, and creates an instance
