@@ -7,7 +7,7 @@ import java.util.NoSuchElementException;
 import java.util.Scanner;
 
 public class Client {
-    
+
     private String inactive_msg = "Logged out due to inactivity.";
     private boolean connected;
     private Socket client_sock;
@@ -77,7 +77,7 @@ public class Client {
 
         /* loop twice for username and password */
         for (int i = 0; i < 2; i++) {
-            
+
             /* read the prompt from the server and display to user */
             String prompt = "";
 
@@ -89,7 +89,7 @@ public class Client {
             } catch (IOException e) {
                 print("Unable to read message from Server.", 1);
             }
-            
+
             print(prompt, 2);
 
             /* read the user's input and send to server */
@@ -148,7 +148,7 @@ public class Client {
     }
 
     /**
-     * Shortens print statements to display to user. 
+     * Shortens print statements to display to user.
      *
      * @param msg : The message to be displayed.
      * @param opt : The print option.
@@ -200,7 +200,7 @@ public class Client {
     public static void main(String[] args) {
 
         if (args.length != 2) {
-            System.out.println("Usage: Client <Server IP Address> " + 
+            System.out.println("Usage: Client <Server IP Address> " +
                                "<Server Port Number>");
             System.exit(-1);
         }
