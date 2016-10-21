@@ -7,29 +7,21 @@ import java.util.NoSuchElementException;
 import java.util.Scanner;
 
 public class Client {
-
-    // Main - args[0] = server ip address, args[1] = server port number
-    public static void main(String[] args) {
-
-        if (args.length != 2) {
-            System.out.println("Usage: Client <Server IP Address> <Server Port Number>");
-            System.exit(-1);
-        }
-
-        Client c = new Client(args[0], Integer.parseInt(args[1]));
-        c.start_client();
-    }
     
-    // Client class environment variables
     private String inactive_msg = "Logged out due to inactivity.";
     private boolean connected;
-
     private Socket client_sock;
-    private BufferedReader br;    // reads from the server
-    private PrintWriter pw;       // writes to the server
-    private Scanner scan;         // scans the user side input
+    private BufferedReader br;    /* reads from the server */
+    private PrintWriter pw;       /* writes to the server */
+    private Scanner scan;         /* scans the user side input */
 
-    // Construct an instance of the Client class using server ip and port number
+    /**
+     * Construct an instance of the Client class using server IP address
+     * and port number.
+     *
+     * @param server_IP : The server ip
+     * @param server_port : The server port
+     */
     public Client(String server_IP, int server_port) {
 
         System.setProperty("file.encoding","UTF-8");
@@ -38,13 +30,18 @@ public class Client {
         create_streams();
         authenticate_user();
 
-        // create and start a new thread to handle comm with server
+        /* create and start a new thread to handle comm with server */
         Server_Thread st = new Server_Thread(br);
-        st.setDaemon(true);
+        //st.setDaemon(true);
         st.start();
     }
 
-    // Creates a new client socket, using the given server IP and port
+    /**
+     * Creates a new client socket, using the given server IP and port
+     *
+     * @param server_IP : The server IP address.
+     * @param server_port : The server port number.
+     */
     private void connect_server(String server_IP, int server_port) {
 
         System.out.println("Establishing connection to server ... ");
@@ -59,14 +56,16 @@ public class Client {
         connected = true;
     }
 
-    // Makes input/output streams from/to the server
+    /**
+     * Makes input/output streams from/to the server
+     */
     private void create_streams() {
 
         try {
             scan = new Scanner(System.in);
-            pw   = new PrintWriter(client_sock.getOutputStream(), true);
-            br   = new BufferedReader(new InputStreamReader(client_sock.getInputStream()));
-
+            pw = new PrintWriter(client_sock.getOutputStream(), true);
+            br = new BufferedReader(new InputStreamReader(
+                                      client_sock.getInputStream()));
         } catch (IOException e) {
             print("\nUnable to create input/output stream with server.", 1);
             System.exit(-1);
@@ -76,42 +75,42 @@ public class Client {
     // Authenticates client
     private void authenticate_user() {
 
-        // loop twice for username and password
-        for (int i = 0; i < 2; i++)
-        {
-            // read the prompt from the server and display to user
+        /* loop twice for username and password */
+        for (int i = 0; i < 2; i++) {
+            
+            /* read the prompt from the server and display to user */
             String prompt = "";
+
             try {
                 prompt = br.readLine();
-                if (prompt.equals(inactive_msg)) {
+                if (prompt.equals(inactive_msg))
                     System.exit(-1);
-                }
 
             } catch (IOException e) {
                 print("Unable to read message from Server.", 1);
             }
+            
             print(prompt, 2);
 
-            // read the user's input and send to server
+            /* read the user's input and send to server */
             String reply;
-            if (scan.hasNextLine())
-            {
+            if (scan.hasNextLine()) {
                 reply = scan.nextLine();
-                if (reply != null && !reply.isEmpty()) {
+                if (reply != null && !reply.isEmpty())
                     pw.println(reply);
-                }
             }
         }
     }
 
-    // Continuously loops writing and reading to and from the server
+    /**
+     * Continuously loops writing and reading to and from the server.
+     */
     private void start_client() {
 
         while (connected) {
             try {
-                while (scan.hasNextLine()) {
+                while (scan.hasNextLine())
                     pw.println(scan.nextLine());
-                }
             } catch (NoSuchElementException e) {
                 break;
             }
@@ -119,10 +118,12 @@ public class Client {
 
         try {
             client_sock.close();
-        } catch (IOException e) {/* */}
+        } catch (IOException ignored) {}
     }
 
-    // A hook that captures interrupt signals from the server
+    /**
+     * A hook that captures interrupt signals from the server.
+     */
     private void init_shutdown_hook() {
 
         Runtime.getRuntime().addShutdownHook(new Thread() {
@@ -132,7 +133,7 @@ public class Client {
                 connected = false;
                 print("Disconnected from server.", 1);
 
-                // try to close out everything
+                /* try to close out everything */
                 try {
                     client_sock.close();
                     print("Closed client socket.", 1);
@@ -141,26 +142,36 @@ public class Client {
 
                 } catch (IOException e) {
                     print("Unable to close client sock.", 1);
-                } catch (NullPointerException e) { /* */ }
+                } catch (NullPointerException ignored) {}
             }
         });
     }
 
-    // Shorten print statements to display to user
+    /**
+     * Shortens print statements to display to user. 
+     *
+     * @param msg : The message to be displayed.
+     * @param opt : The print option.
+     */
     private void print(String msg, int opt) {
-
-        if (opt == 1) {
+        if (opt == 1)
             System.out.println(msg);
-        } else {
+        else
             System.out.print(msg);
-        }
     }
 
-    // A thread to handle communicating with server
+    /**
+     * A thread to handle communicating with server
+     */
     private class Server_Thread extends Thread {
 
         private BufferedReader br;
 
+        /**
+         * Constructs a new Server_Thread object.
+         *
+         * @param reader : A reference to the server buffered reader.
+         */
         private Server_Thread(BufferedReader reader) {
             br = reader;
         }
@@ -172,13 +183,29 @@ public class Client {
             try {
                 while ((line = br.readLine()) != null) {
                     print(line, 1);
-                    if (line.equals(inactive_msg) || isInterrupted()){
+                    if (line.equals(inactive_msg) || isInterrupted())
                         break;
-                    }
                 }
                 System.exit(-1);
             }
-            catch (IOException e) { /* */ }
+            catch (IOException ignored) {}
         }
+    }
+
+    /**
+     * Client main entry point.
+     *
+     * @param args : The server IP address and server port number.
+     */
+    public static void main(String[] args) {
+
+        if (args.length != 2) {
+            System.out.println("Usage: Client <Server IP Address> " + 
+                               "<Server Port Number>");
+            System.exit(-1);
+        }
+
+        Client c = new Client(args[0], Integer.parseInt(args[1]));
+        c.start_client();
     }
 }
