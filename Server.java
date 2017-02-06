@@ -24,108 +24,98 @@ import java.util.concurrent.CopyOnWriteArrayList;
 
 public class Server {
 
-    private final int MAX_ATTEMPTS = 3;  /* maximum number of login attempts */
-    private final int BLOCK_TIME = 60;   /* 60 seconds */
-    private final int TIME_OUT = 30;     /* 30 minutes */
-    private ServerSocket listen_socket;
-    private File user_pass;
-    private Inactivity_Monitor monitor;
+    private final int MAXATTEMPTS = 3;  /* maximum number of login attempts */
+    private final int BLOCKTIME = 60;   /* 60 seconds */
+    private final int TIMEOUT = 30;     /* 30 minutes */
+    private InactivityMonitor monitor;
+    private ServerSocket listenSocket;
+    private File userPass;
 
-    /* based on hostname */
-    private Map<String, CopyOnWriteArrayList<User_Record>> BLOCKED;
-
-    /* based on username */
-    private CopyOnWriteArrayList<User_Record> ONLINE;
-
-    /* based on username*/
-    private CopyOnWriteArrayList<User_Record> OFFLINE;
-
-    /* based on thread */
-    private CopyOnWriteArrayList<Client_Thread> THREADS;
-
-    /* based on hostname */
-    private Map<String, CopyOnWriteArrayList<String>> offline_msgs;
+    private Map<String, CopyOnWriteArrayList<UserRecord>> blocked; /* based on hostname */
+    private CopyOnWriteArrayList<UserRecord> online;               /* based on username */
+    private CopyOnWriteArrayList<UserRecord> offline;              /* based on username */
+    private CopyOnWriteArrayList<ClientThread> threads;            /* based on thread   */
+    private Map<String, CopyOnWriteArrayList<String>> offlineMsgs; /* based on hostname */
 
     /**
      * Construct a new Server object using socket for server to listen on.
-     *
      * @param sock : The server listening socket.
      */
     public Server(ServerSocket sock) {
 
         System.setProperty("file.encoding", "UTF8");
-        listen_socket = sock;
-        user_pass = new File("user_pass.txt");
-        BLOCKED = new HashMap<String, CopyOnWriteArrayList<User_Record>>();
-        ONLINE  = new CopyOnWriteArrayList<User_Record>();
-        OFFLINE = new CopyOnWriteArrayList<User_Record>();
-        THREADS = new CopyOnWriteArrayList<Client_Thread>();
-        offline_msgs = new HashMap<String, CopyOnWriteArrayList<String>>();
+        listenSocket = sock;
+        userPass = new File("UserPass");
+        blocked = new HashMap<String, CopyOnWriteArrayList<UserRecord>>();
+        online  = new CopyOnWriteArrayList<UserRecord>();
+        offline = new CopyOnWriteArrayList<UserRecord>();
+        threads = new CopyOnWriteArrayList<ClientThread>();
+        offlineMsgs = new HashMap<String, CopyOnWriteArrayList<String>>();
     }
 
     /**
      * Starts the server and loops forever accepting client connections
      * and creating new threads.
      */
-    private void start_server() {
+    private void startServer() {
 
-        log("Server Started on port "+listen_socket.getLocalPort()+".");
-        init_shutdown_hook();
+        log("Server Started on port " + listenSocket.getLocalPort() + ".");
+        initShutdownHook();
 
         log("Inactivity Monitor thread started.");
-        monitor = new Inactivity_Monitor();
+        monitor = new InactivityMonitor();
         monitor.setDaemon(true);
         monitor.start();
 
-        if (!parse_user_pass()) {
-            log("Please fix " + user_pass + " file and rerun server.");
+        if (!parseUserPass()) {
+            log("Please fix " + userPass + " file and rerun server.");
             System.exit(-1);
         }
 
-        // loop forever accepting new connections
+        /* loop forever accepting new connections */
         log("Standing by for connections ... ");
         for (; ;) {
-            Client_Thread t;
+            ClientThread t;
+            Socket client;
             try {
-                Socket client = listen_socket.accept();
-                t = new Client_Thread(this, client);
+                client = listenSocket.accept();
+                t = new ClientThread(this, client);
                 t.setDaemon(true);
                 t.start();
-                add_thread(t);
+                addThread(t);
             } catch (IOException ignore) {}
         }
     }
 
-    /**
-     * This thread monitors for inactive client threads.
-     * Runs ever 1/10 s.
-     */
-    private class Inactivity_Monitor extends Thread {
+    /*** This thread monitors for inactive client threads. Runs ever 1/10 s. */
+    private class InactivityMonitor extends Thread {
 
         @Override
         public void run() {
-            while (!listen_socket.isClosed()) {
-                for (Client_Thread t : THREADS)
-                {
-                    if (!t.isAlive() && t.user_name != null &&
-                        list_contains(ONLINE, t.user_name)) {
 
-                        log("Logging out dead user "+t.user_name+".");
+            while (!listenSocket.isClosed()) {
+
+                for (ClientThread t : threads) {
+
+                    if (!t.isAlive() && t.userName != null &&
+                        listContains(online, t.userName)) {
+                        log("Logging out dead user " + t.userName + ".");
                         t.logout();
                     }
-                    long curr_time = System.currentTimeMillis();
-                    long secs_inac = (curr_time - t.time_last_active) / 1000;
-                    boolean logged_in = t.logged_in;
-                    boolean over_time = (secs_inac >= TIME_OUT*60);
+
+                    long currTime = System.currentTimeMillis();
+                    long secsInactive = (currTime - t.timeLastActive) / 1000;
+                    boolean loggedIn = t.loggedIn;
+                    boolean overTime = (secsInactive >= TIMEOUT * 60);
 
                     /*
                      * logout user if logged in and inactive for a
-                     * period >= TIME_OUT > 0
+                     * period >= TIMEOUT > 0
                      */
-                    if (logged_in && over_time && secs_inac > 0) {
+                    if (loggedIn && overTime && secsInactive > 0) {
                         t.pw.println("Logged out due to inactivity.");
-                        log("Closed inactive user "+t.user_name+
-                            " @ "+t.host_address);
+                        log("Closed inactive user " + t.userName +
+                            " @ " + t.hostAddress);
                         t.logout();
                     }
 
@@ -138,99 +128,94 @@ public class Server {
         }
     }
 
-    /**
-     * Clinet thread class handles communication with clients.
-     */
-    private class Client_Thread extends Thread {
+    /*** Client thread class handles communication with clients. */
+    private class ClientThread extends Thread {
 
-        private Socket client_sock;
-        private Server chat_server;
-        private String host_address;
-        private String user_name;
+        private Socket clientSock;
+        private Server chatServer;
+        private String hostAddress;
+        private String userName;
         private PrintWriter pw;
         private BufferedReader br;
-        private String login_msg;
-        private String logout_msg;
+        private String loginMsg;
+        private String logoutMsg;
         private volatile boolean alive;
-        private volatile boolean logged_in;
-        private volatile long time_last_active;
+        private volatile boolean loggedIn;
+        private volatile long timeLastActive;
 
         /**
          * Constructs a new client thread.
-         *
          * @param serv : Reference to server.
          * @param sock : Client socket.
          */
-        public Client_Thread(Server serv, Socket sock) {
+        public ClientThread(Server serv, Socket sock) {
+
             super();
-            client_sock      = sock;
-            chat_server      = serv;
-            host_address     = client_sock.getInetAddress().getHostAddress();
-            login_msg        = "";
-            logout_msg       = "";
-            alive            = true;
-            logged_in        = false;
-            time_last_active = 0;
+            clientSock = sock;
+            chatServer = serv;
+            hostAddress = clientSock.getInetAddress().getHostAddress();
+            loginMsg = "";
+            logoutMsg = "";
+            alive = true;
+            loggedIn = false;
+            timeLastActive = 0;
         }
 
         /**
-         * Handles client login process
-         *
-         * @param name : The string username.
+         * Handles client login process.
+         * @param name : The username.
          */
         private void login(String name) {
 
-            time_last_active = System.currentTimeMillis();
-            login_msg = "User "+user_name+" has logged in.";
-            logged_in = true;
-            user_name = name;
+            timeLastActive = System.currentTimeMillis();
+            loginMsg = "User " + userName + " has logged in.";
+            loggedIn = true;
+            userName = name;
 
-            pw.println("Welcome "+name+
+            pw.println("Welcome " + name +
                 "! Enter your command! (Type help for command options.)\n");
 
             // if messages were received while offline - display them
-            if (offline_msgs.containsKey(name)) {
-                check_messages(this);
-                if (!offline_msgs.get(name).isEmpty()) {
-                    for (String msg : offline_msgs.get(name))
+            if (offlineMsgs.containsKey(name)) {
+                checkMessages(this);
+                if (!offlineMsgs.get(name).isEmpty()) {
+                    for (String msg : offlineMsgs.get(name))
                         pw.println(msg);
                 }
             }
-            add_users_ONLINE(this);
-            remove_users_OFFLINE(this);
+            addUsersOnline(this);
+            removeUsersOffline(this);
 
-            /* broadcast to all other users that user_name has logged in */
-            if (user_name != null) {
-                log(login_msg);
-                chat_server.send(this, login_msg, 2, "");
+            /* broadcast to all other users that userName has logged in */
+            if (userName != null) {
+                log(loginMsg);
+                chatServer.send(this, loginMsg, 2, "");
             }
         }
 
-        /**
-         * Handles client logout process.
-         */
+        /*** Handles client logout process. */
         private void logout() {
 
-            time_last_active = System.currentTimeMillis();
-            logged_in = false;
+            timeLastActive = System.currentTimeMillis();
+            loggedIn = false;
             alive = false;
 
-            /* user_name is null only if a client has not yet logged in */
-            if (user_name != null) {
-                remove_users_ONLINE(this);
-                add_users_OFFLINE(this, "Offline_Not_Blocked");
-                logout_msg = "User "+user_name+" logged out.";
-                log(logout_msg);
-                chat_server.send(this, logout_msg, 2, "");
+            /* userName is null only if a client has not yet logged in */
+            if (userName != null) {
+                removeUsersOnline(this);
+                addUsersOffline(this, "OfflineNotBlocked");
+                logoutMsg = "User " + userName + " logged out.";
+                log(logoutMsg);
+                chatServer.send(this, logoutMsg, 2, "");
             }
-            delete_thread(this);
+            deleteThread(this);
 
             try {
-                client_sock.close();
+                clientSock.close();
                 pw.close();
                 br.close();
             } catch (IOException e) {
-                log("Error: Incomplete shutdown for user "+user_name);
+                log("Error: Incomplete shutdown for user " + userName);
             }
         }
 
@@ -243,16 +228,17 @@ public class Server {
          *               : 4 - send private message
          *               : 5 - send group message
          */
-        private void handle_command(String line, int option) {
+        private void handleCommand(String line, int option) {
 
             ArrayList<String> names = new ArrayList<String>();
             StringBuilder sb = new StringBuilder();
             String[] words;
             String msg;
 
-            switch (option) {
+            switch (option)
+            {
                 case 1:
-                    for (User_Record r : ONLINE)
+                    for (UserRecord r : online)
                         names.add(r.name);
                     pw.println(Arrays.toString(names.toArray()));
                     break;
@@ -264,14 +250,14 @@ public class Server {
                     if (time >= 0 && time <= 60) {
 
                         /* first add all online users */
-                        for (User_Record r : ONLINE)
+                        for (UserRecord r : online)
                             names.add(r.name);
 
                         /* then add only those users w/in (time) mins */
-                        for (User_Record r : OFFLINE) {
+                        for (UserRecord r : offline) {
                             long diff;
                             if (!r.name.equals("null")) {
-                                diff = System.currentTimeMillis() - r.time_out;
+                                diff = System.currentTimeMillis() - r.timeout;
                                 if ((diff / 1000) <= (time * 60) &&
                                     !names.contains(r.name)) {
                                     sb.append(r.name).append(" ");
@@ -282,7 +268,7 @@ public class Server {
                         pw.println(Arrays.toString(names.toArray()));
 
                     } else {
-                        pw.println("Improper use of 'last'. " +
+                        pw.println("Improper use of 'last.' " +
                                    "Please specify time between 0-60 minutes.");
                     }
                     break;
@@ -299,40 +285,39 @@ public class Server {
                         sb.append(words[j]).append(" ");
 
                     msg = sb.toString();
-                    if (list_contains(ONLINE, recipient))
+                    if (listContains(online, recipient))
                         send(this, msg, 3, recipient);
-                    else if (list_contains(OFFLINE, recipient))
-                        save_message(this, recipient, msg);
+                    else if (listContains(offline, recipient))
+                        saveMessage(this, recipient, msg);
                     break;
 
                 case 5:
                     /* get usernames between parentheses */
-                    int open_paren = line.indexOf("(");
+                    int openParen = line.indexOf("(");
                     int i;
-                    for (i = open_paren; i < line.length(); i++) {
+                    for (i = openParen; i < line.length(); i++) {
                         if (line.charAt(i) == ')')
                             break;
                     }
 
-                    String offline = "";
-                    String[] recipients = line.substring(open_paren + 1, i).
+                    String offline_list = "";
+                    String[] recipients = line.substring(openParen + 1, i).
                                           split(" ");
                     msg = line.substring(i + 1, line.length());
 
-
                     /* append online users to string builder */
                     for (String recip : recipients) {
-                        if (list_contains(ONLINE, recip))
+                        if (listContains(online, recip))
                             sb.append(recip).append(" ");
-                        else if (list_contains(OFFLINE, recip))
-                            offline += recip + " ";
+                        else if (listContains(offline, recip))
+                            offline_list += recip + " ";
                     }
 
                     /* check if any of the recipients were offline users */
                     if (!offline.isEmpty()) {
-                        String[] offline_users = offline.split(" ");
-                        for (String user : offline_users)
-                            save_message(this, user, msg);
+                        String[] offlineUsers = offline_list.split(" ");
+                        for (String user : offlineUsers)
+                            saveMessage(this, user, msg);
                     }
 
                     send(this, msg, 3, sb.toString());
@@ -341,18 +326,16 @@ public class Server {
             }
         }
 
-        /**
-         * Handles the communication to and from the client thread.
-         */
-        private void handle_communication() {
+        /*** Handles the communication to and from the client thread. */
+        private void handleCommunication() {
 
-            String help    = "^(help)(\\s)*";
-            String last    = "^(last)(\\s)([0-9])+(\\s)*";
-            String logout  = "^(logout)(\\s)*";
-            String who     = "^(who)(\\s)*";
-            String bcast   = "^(broadcast)(\\s)((.+)(\\s)*)+";
-            String send_pm = "^(send)(\\s)+([a-zA-Z0-9])+(\\s)((.+)(\\s)*)+";
-            String send_gr = "^(send)(\\s)+(\\()(([a-zA-Z0-9]+)+((\\s)?)){2,}" +
+            String help   = "^(help)(\\s)*";
+            String last   = "^(last)(\\s)([0-9])+(\\s)*";
+            String logout = "^(logout)(\\s)*";
+            String who    = "^(who)(\\s)*";
+            String bcast  = "^(broadcast)(\\s)((.+)(\\s)*)+";
+            String sendPm = "^(send)(\\s)+([a-zA-Z0-9])+(\\s)((.+)(\\s)*)+";
+            String sendGr = "^(send)(\\s)+(\\()(([a-zA-Z0-9]+)+((\\s)?)){2,}" +
                              "(\\))(\\s)(((.+)(\\s)*)+)";
             String line;
 
@@ -370,8 +353,8 @@ public class Server {
                                        "contain new line characters.");
 
                         } else if (line.matches("^(send)(\\s)*") &&
-                                  !line.matches(send_gr) &&
-                                  !line.matches(send_pm)) {
+                                  !line.matches(sendGr) &&
+                                  !line.matches(sendPm)) {
                             pw.println("'send' command usage:\n" +
                                        "   send <user> <message>\n" +
                                        "   send (<user> <user> ... <user>) " +
@@ -388,19 +371,19 @@ public class Server {
                                        "   broadcast <message>");
 
                         } else if (line.matches(who)) {
-                            handle_command(null, 1);
+                            handleCommand(null, 1);
 
                         } else if (line.matches(last)) {
-                            handle_command(line, 2);
+                            handleCommand(line, 2);
 
                         } else if (line.matches(bcast)) {
-                            handle_command(line, 3);
+                            handleCommand(line, 3);
 
-                        } else if (line.matches(send_pm)) {
-                            handle_command(line, 4);
+                        } else if (line.matches(sendPm)) {
+                            handleCommand(line, 4);
 
-                        } else if (line.matches(send_gr)) {
-                            handle_command(line, 5);
+                        } else if (line.matches(sendGr)) {
+                            handleCommand(line, 5);
 
                         } else if (line.matches(logout)) {
                             logout();
@@ -411,25 +394,22 @@ public class Server {
                                     "   last <number>\n" +
                                     "   broadcast <message>\n" +
                                     "   send <user> <message>\n" +
-                                    "   send (<user> <user> ... <user>) "+
+                                    "   send (<user> <user> ... <user>) " +
                                     "<message>\n   logout");
 
                         } else {
-                            pw.println("Please specify one of the following "+
+                            pw.println("Please specify one of the following " +
                                 "commands:\n   who last broadcast send logout");
                         }
                     }
 
                 } catch (IOException ignored) {}
             }
-
             interrupt();
         }
 
-        /**
-         * Handles the user login and verifies credentials.
-         */
-        private void handle_login() {
+        /*** Handles the user login and verifies credentials. */
+        private void handleLogin() {
 
             int attempted = 0;
             int remaining;
@@ -438,14 +418,14 @@ public class Server {
             top:
             while (alive) try {
 
-                // read username
+                /* read username */
                 pw.println("Username: ");
                 String name = br.readLine();
 
                 if (name == null)
                     continue;
 
-                if (check_blocked_host(this, name)) {
+                if (checkBlockedHost(this, name)) {
                     pw.println("You have been blocked for too many attempts " +
                                "for this username. Please try again later.");
                     logout();
@@ -460,17 +440,17 @@ public class Server {
                     continue;
 
                 pass = pass.replaceAll(" ", "");
-                int result = validate_login(name, pass);
+                int result = validateLogin(name, pass);
                 switch (result)
                 {
                     /* failed attempt */
                     case 0:
                         attempted++;
-                        if (attempted == MAX_ATTEMPTS) {
-                            add_BLOCKED(this, name, attempted);
+                        if (attempted == MAXATTEMPTS) {
+                            addBlocked(this, name, attempted);
                         } else {
-                            remaining = MAX_ATTEMPTS - attempted;
-                            pw.println("Incorrect password. "+remaining+
+                            remaining = MAXATTEMPTS - attempted;
+                            pw.println("Incorrect password. " + remaining +
                                        " remaining.");
                         }
                         break;
@@ -481,7 +461,7 @@ public class Server {
                         break top;
 
                     case 2:
-                        pw.println("User "+name+" is already signed in.");
+                        pw.println("User " + name + " is already signed in.");
                         break;
 
                     case 3:
@@ -497,60 +477,56 @@ public class Server {
             } catch (IOException ignored) {}
         }
 
-        /**
-         * Handles reading/writing with users.
-         */
+        /*** Handles reading/writing with users. */
         @Override
         public void run() {
 
             log("New connection established.");
             try {
-
-                pw = new PrintWriter(client_sock.getOutputStream(), true);
+                pw = new PrintWriter(clientSock.getOutputStream(), true);
                 br = new BufferedReader(new InputStreamReader(
-                                        client_sock.getInputStream()));
+                                        clientSock.getInputStream()));
             } catch (IOException e) {
 
                 /*
-                 * in case inactivity_thread this removes client thread,
+                 * in case InactivityThread this removes client thread,
                  * this will avoid null pointer
                  */
-                if (user_name == null) {
+                if (userName == null) {
                     this.interrupt();
                     return;
                 }
 
                 log("Error: Failed to setup reader/writer for client " +
-                    user_name);
+                    userName);
 
                 if (this.alive)
                     logout();
             }
 
-            handle_login();
-            handle_communication();
+            handleLogin();
+            handleCommunication();
         }
     }
 
     /**
-     * Parses the user_pass file.
-     *
-     * @return True on successful file hashing, false if non-alphanumeric
-     * chararcters present or error occurred.
+     * Parses the userPass file.
+     * @return : True on successful file hashing, False if non-alphanumeric
+     *           chararcters present or error occurred.
      */
-    private boolean parse_user_pass() {
+    private boolean parseUserPass() {
 
-        File temp_file = new File("temp");
+        File tempFile = new File("temp");
         BufferedReader br;
         BufferedWriter bw;
         String line;
 
         try {
 
-            br = new BufferedReader(new FileReader(user_pass));
-            bw = new BufferedWriter(new FileWriter(temp_file));
+            br = new BufferedReader(new FileReader(userPass));
+            bw = new BufferedWriter(new FileWriter(tempFile));
 
-            log("Hashing " + user_pass + "...");
+            log("Hashing " + userPass + "...");
             while ((line = br.readLine()) != null) {
 
                 String[] tokens = line.split(" ");
@@ -559,14 +535,14 @@ public class Server {
                     if (!t.matches("^[a-zA-Z0-9]*$")) /* if not alphanumeric */
                         return false;
                     else
-                        bw.write(get_hash(t) + " ");  /* write hash to file */
+                        bw.write(getHash(t) + " ");  /* write hash to file */
                 }
 
                 bw.write("\n");
             }
 
         } catch (Exception e) {
-            log("Error: Unsuccessful read/write to "+user_pass+"/temp files.");
+            log("Error: Unable to read/write to " + userPass + "/temp file.");
             return false;
         }
 
@@ -580,16 +556,16 @@ public class Server {
         }
 
         /*
-         * rename the user_pass.txt file to save it and rename the hashed
-         * file to user_pass.txt
+         * rename the userPass.txt file to save it and rename the hashed
+         * file to userPass.txt
          */
-        String name = user_pass.getName().replaceFirst("[.][^.]+$", "");
-        boolean rename_old = user_pass.renameTo(new File(user_pass+".old"));
-        boolean rename_tmp = temp_file.renameTo(new File(name+".txt"));
+        String name = userPass.getName().replaceFirst("[.][^.]+$", "");
+        boolean renameOld = userPass.renameTo(new File(userPass + ".old"));
+        boolean renameTmp = tempFile.renameTo(new File(name));
 
         /* if renaming file failed */
-        if (!rename_old && !rename_tmp) {
-            log("Error: Unsuccessful in renaming "+user_pass);
+        if (!renameOld && !renameTmp) {
+            log("Error: Unable to rename " + userPass);
             return false;
         }
 
@@ -600,21 +576,18 @@ public class Server {
 
     /**
      * Hashes the string using the SHA-1, then returns it in hex format.
-     *
      * @param msg : The string to be hashed.
-     *
-     * @return The hashed string on success and empty string otherwise.
+     * @return    : The hashed string on success and empty string otherwise.
      */
-    private String get_hash(String msg) {
+    private String getHash(String msg) {
 
-        MessageDigest m_digest = null;
+        MessageDigest mDigest = null;
 
         try {
-            m_digest = MessageDigest.getInstance("SHA-1");
-            m_digest.reset();
-
+            mDigest = MessageDigest.getInstance("SHA-1");
+            mDigest.reset();
             try {
-                m_digest.update(msg.concat(" ").getBytes("utf8"));
+                mDigest.update(msg.concat(" ").getBytes("utf8"));
             } catch (NullPointerException e) {
                 log("Error: No input.");
                 return "";
@@ -626,16 +599,15 @@ public class Server {
             log("Error: UTF-8 Unsupported.");
         }
 
-        // msg is hashed - now format it to hex format
-        if (m_digest != null) {
+        /* msg is hashed - now format it to hex format */
+        if (mDigest != null) {
 
             Formatter f = new Formatter();
 
-            for (byte b : m_digest.digest())
+            for (byte b : mDigest.digest())
                 f.format("%02x", b);
 
             String hex = f.toString();
-
             f.close();
             return hex;
         }
@@ -644,32 +616,27 @@ public class Server {
         return "";
     }
 
-    /**
-     * Logs a time stamp and the message to the server.
-     */
+    /*** Logs a time stamp and the message to the server. */
     private void log(String msg) {
-
-        String time_stamp = new SimpleDateFormat("yyyyMMdd_HHmmss").
-                            format(Calendar.getInstance().getTime());
-        System.out.println(""+time_stamp+": "+msg);
+        System.out.println("" + new SimpleDateFormat("yyyyMMdd_HHmmss").
+                            format(Calendar.getInstance().getTime()) +
+                            ": " + msg);
     }
 
-    /**
-     * A hook that captures interrupt signals.
-     */
-    private void init_shutdown_hook() {
+    /*** A hook that captures interrupt signals. */
+    private void initShutdownHook() {
 
         Runtime.getRuntime().addShutdownHook(new Thread() {
             @Override
             public void run() {
                 try {
-                    for (Client_Thread t : THREADS) {
-                        log("Closing client @ " + t.host_address);
+                    for (ClientThread t : threads) {
+                        log("Closing client @ " + t.hostAddress);
                         t.logout();
                     }
                     log("Server shut down.");
                     monitor.interrupt();
-                    listen_socket.close();
+                    listenSocket.close();
                 } catch (IOException e) {
                     log("Error: Server Socket was not closed.");
                     System.exit(-1);
@@ -679,20 +646,19 @@ public class Server {
     }
 
     /**
-     * Removes a client and user name from the BLOCKED database.
-     *
-     * @param t : The client thread.
-     * @param user_name : The user name to be unblocked.
+     * Removes a client and user name from the blocked database.
+     * @param t        : The client thread.
+     * @param userName : The user name to be unblocked.
      */
-    private synchronized void remove_BLOCKED(Client_Thread t,
-                                             String user_name) {
+    private synchronized void removeBlocked(ClientThread t,
+                                             String userName) {
         /* get host's block records */
-        CopyOnWriteArrayList<User_Record> records = BLOCKED.get(t.host_address);
+        CopyOnWriteArrayList<UserRecord> records = blocked.get(t.hostAddress);
 
-        if (user_name != null) {
+        if (userName != null) {
             for (int j = 0; j < records.size(); j++) {
-                User_Record r = records.get(j);
-                if (r.name != null && r.name.equals(user_name))
+                UserRecord r = records.get(j);
+                if (r.name != null && r.name.equals(userName))
                     records.remove(r);         /* remove only matching record */
             }
         }
@@ -700,38 +666,37 @@ public class Server {
 
     /**
      * Adds a host to the blocked list.
-     *
-     * @param t             : The client thread.
-     * @param name_accessed : The name accessed.
-     * @param attempts      : The number of access attempts.
+     * @param t            : The client thread.
+     * @param nameAccessed : The name accessed.
+     * @param attempts     : The number of access attempts.
      */
-    private synchronized void add_BLOCKED(Client_Thread t, String name_accessed,
-                                          int attempts) {
-        String host = t.host_address;
-        User_Record r;
+    private synchronized void addBlocked(ClientThread t, String nameAccessed,
+                                         int attempts) {
+        String host = t.hostAddress;
+        UserRecord r;
 
         /* if the blocked list contains a record matching this host */
-        if (BLOCKED.containsKey(host)) {
+        if (blocked.containsKey(host)) {
 
             /* check each record */
-            for (User_Record rec : BLOCKED.get(host)) {
+            for (UserRecord rec : blocked.get(host)) {
 
                 /* if name accessed matches a record */
-                if (rec.blocked_attempted_name.equals(name_accessed)) {
+                if (rec.blockedAttemptedName.equals(nameAccessed)) {
 
                     /* increment attempts for that name only & update time */
-                    rec.blocked_name_attempts++;
-                    rec.blocked_time_attempted = System.currentTimeMillis();
+                    rec.blockedNameAttempts++;
+                    rec.blockedTimeAttempted = System.currentTimeMillis();
 
                 } else {
 
                     /* else create new record for the host for this username */
-                    r = new User_Record(t, "Offline_Blocked");
-                    r.blocked_time_attempted = System.currentTimeMillis();
-                    r.blocked_attempted_name = name_accessed;
-                    r.blocked_name_attempts  = attempts;
-                    r.time_out = -1;
-                    BLOCKED.get(host).add(r);
+                    r = new UserRecord(t, "OfflineBlocked");
+                    r.blockedTimeAttempted = System.currentTimeMillis();
+                    r.blockedAttemptedName = nameAccessed;
+                    r.blockedNameAttempts = attempts;
+                    r.timeout = -1;
+                    blocked.get(host).add(r);
                 }
             }
 
@@ -739,121 +704,116 @@ public class Server {
 
             /*
              * name accessed matches no record, so make a new one and
-             * add to the BLOCKED list
+             * add to the blocked list
              */
-            r = new User_Record(t, "Offline_Blocked");
-            r.blocked_time_attempted = System.currentTimeMillis();
-            r.blocked_attempted_name = name_accessed;
-            r.blocked_name_attempts  = attempts;
-            r.time_out = -1;
+            r = new UserRecord(t, "OfflineBlocked");
+            r.blockedTimeAttempted = System.currentTimeMillis();
+            r.blockedAttemptedName = nameAccessed;
+            r.blockedNameAttempts  = attempts;
+            r.timeout = -1;
 
-            CopyOnWriteArrayList<User_Record> records_list;
-            records_list = new CopyOnWriteArrayList<User_Record>();
-            records_list.add(r);
-            BLOCKED.put(host, records_list);
+            CopyOnWriteArrayList<UserRecord> recordsList;
+            recordsList = new CopyOnWriteArrayList<UserRecord>();
+            recordsList.add(r);
+            blocked.put(host, recordsList);
         }
 
         t.pw.println("Reached maximum number of password attempts. "
-                     +host+ " blocked for "+BLOCK_TIME+" seconds.");
-        log("Blocked host "+host+" for username "+name_accessed+".");
+                     + host + " blocked for " + BLOCKTIME + " seconds.");
+        log("Blocked host " + host + " for username " + nameAccessed + ".");
 
         try {
-            t.client_sock.close();
+            t.clientSock.close();
             t.br.close();
             t.pw.close();
-            delete_thread(t);
+            deleteThread(t);
         } catch (IOException e) {
-            log("Error: Incomplete shutdown for user "+t.user_name);
+            log("Error: Incomplete shutdown for user " + t.userName);
         }
     }
 
     /**
      * Checks to see if the client is blocked and performs necessary actions.
-     *
-     * @param t : The client thread.
+     * @param t    : The client thread.
      * @param name : The attempted user name.
-     *
-     * @return
+     * @return     : True if host is blocked, False otherwise.
      */
-    private synchronized boolean check_blocked_host(Client_Thread t,
-                                                    String name) {
-        String host = t.host_address;
+    private synchronized boolean checkBlockedHost(ClientThread t, String name) {
 
-        if (!BLOCKED.containsKey(host))
+        String host = t.hostAddress;
+
+        if (!blocked.containsKey(host))
             return false;
 
         /* otherwise check each record in database */
-        for (User_Record record : BLOCKED.get(host)) {
+        for (UserRecord record : blocked.get(host)) {
 
             /* if the record/key is not (null = user not logged in) */
             if (record != null) {
 
-                long time_blocked = record.blocked_time_attempted;
-                String attempt_name = record.blocked_attempted_name;
+                long timeBlocked = record.blockedTimeAttempted;
+                String attemptName = record.blockedAttemptedName;
 
                 /* if the name in record matches the current attempted name */
-                if (name.equals(attempt_name)) {
-                    long curr_time = System.currentTimeMillis();
-                    long sec_elap = (curr_time - time_blocked) / 1000;
-                    long remain = BLOCK_TIME - sec_elap;
+                if (name.equals(attemptName)) {
+                    long currTime = System.currentTimeMillis();
+                    long secElapsed = (currTime - timeBlocked) / 1000;
+                    long remain = BLOCKTIME - secElapsed;
 
-                    // check to see if the host has passed the time
+                    /* check to see if the host has passed the time */
                     if (remain > 0) {
-                        log("Attempted access from blocked host "+host+
-                            " for username "+ name +". ("+remain+
+                        log("Attempted access from blocked host " + host +
+                            " for username " + name + ". (" + remain +
                             ") seconds remaining.");
                         return true;
 
                     } else {
-
                         /* else remove only that record from blocked database */
-                        log("Unblocked host "+host+" for username "+name+".");
-                        remove_BLOCKED(t, name);
+                        log("Unblocked host " + host + " for username " +
+                            name + ".");
+                        removeBlocked(t, name);
                         return false;
                     }
                 }
             }
         }
-
         return false;
     }
 
     /**
      * Saves a message for an offline user.
-     *
-     * @param sender    : The sender client thread.
-     * @param user_name : The recipient's user name.
-     * @param msg       : The message to be saved.
+     * @param sender   : The sender client thread.
+     * @param userName : The recipient's username.
+     * @param msg      : The message to be saved.
      */
-    private synchronized void save_message(Client_Thread sender,
-                                           String user_name, String msg) {
+    private synchronized void saveMessage(ClientThread sender,String userName, 
+                                          String msg) {
 
-        String time_stamp = new SimpleDateFormat("yyyyMMdd_HHmmss").
-                            format(Calendar.getInstance().getTime());
+        String timeStamp = new SimpleDateFormat("yyyyMMdd_HHmmss").
+                           format(Calendar.getInstance().getTime());
 
-        /* if offline messages already contains user_name */
-        if (offline_msgs.containsKey(user_name)) {
-            offline_msgs.get(user_name).
-            add(time_stamp +" ["+sender.user_name+"]: "+msg);
+        /* if offline messages already contains userName */
+        if (offlineMsgs.containsKey(userName)) {
+            offlineMsgs.get(userName).
+            add(timeStamp + " [" + sender.userName + "]: " + msg);
 
-        } else if (list_contains(OFFLINE, user_name)) {
-            if (user_name != null) {
+        } else if (listContains(offline, userName)) {
+            if (userName != null) {
                 CopyOnWriteArrayList<String> temp;
                 temp = new CopyOnWriteArrayList<String>();
-                temp.add(time_stamp+" ["+sender.user_name+"]: "+msg);
-                offline_msgs.put(user_name, temp);
+                temp.add(timeStamp + " [" + sender.userName + "]: " + msg);
+                offlineMsgs.put(userName, temp);
             }
         }
     }
 
     /**
      * Displays messages received while offline, then removes them.
-     *
      * @param t : The client thread.
      */
-    private synchronized void check_messages(Client_Thread t) {
+    private synchronized void checkMessages(ClientThread t) {
 
-        for (CopyOnWriteArrayList<String> messages: offline_msgs.values()) {
+        for (CopyOnWriteArrayList<String> messages: offlineMsgs.values()) {
             if (!messages.isEmpty()) {
                 t.pw.println("Messages while you were offline: ");
                 for (String msg : messages) {
@@ -867,120 +827,101 @@ public class Server {
 
     /**
      * Adds a user to the list of offline users.
-     *
-     * @param t : The client thread.
+     * @param t      : The client thread.
      * @param status : The status
      */
-    private synchronized void add_users_OFFLINE(Client_Thread t,
-                                                String status) {
+    private synchronized void addUsersOffline(ClientThread t, String status) {
 
-        if (!list_contains(OFFLINE, t.user_name)) {
-            User_Record r = new User_Record(t, status);
-            r.host = t.host_address;
-            r.blocked_time_attempted = -1;
-            r.blocked_name_attempts  = -1;
-            r.blocked_attempted_name = "";
-            r.time_out = System.currentTimeMillis();
-            OFFLINE.add(r);
+        if (!listContains(offline, t.userName)) {
+            UserRecord r = new UserRecord(t, status);
+            r.host = t.hostAddress;
+            r.blockedTimeAttempted = -1;
+            r.blockedNameAttempts = -1;
+            r.blockedAttemptedName = "";
+            r.timeout = System.currentTimeMillis();
+            offline.add(r);
         }
     }
 
     /**
      * Removes a user to the offline list.
-     *
-     * @param t : The thread to be removed from the OFFLINE list.
+     * @param t : The client thread.
      */
-    private synchronized void remove_users_OFFLINE(Client_Thread t) {
-
-        if (t.user_name != null) {
-            if (list_contains(OFFLINE, t.user_name))
-                list_remove(OFFLINE, t.user_name);
-        }
+    private synchronized void removeUsersOffline(ClientThread t) {
+        if (t.userName != null && listContains(offline, t.userName))
+            listRemove(offline, t.userName);
     }
 
     /**
      * Adds a user to the online list.
-     *
      * @param t : The client thread.
      */
-    private synchronized void add_users_ONLINE(Client_Thread t) {
-        if (!list_contains(ONLINE, t.user_name))
-            ONLINE.add(new User_Record(t, "Online"));
+    private synchronized void addUsersOnline(ClientThread t) {
+        if (!listContains(online, t.userName))
+            online.add(new UserRecord(t, "Online"));
     }
 
     /**
      * Removes a user from the online list.
-     *
      * @param t : The client thread.
      */
-    private synchronized void remove_users_ONLINE(Client_Thread t) {
-        if (list_contains(ONLINE, t.user_name))
-            list_remove(ONLINE, t.user_name);
+    private synchronized void removeUsersOnline(ClientThread t) {
+        if (listContains(online, t.userName))
+            listRemove(online, t.userName);
     }
 
     /**
      * Returns the thread with the given user name.
-     *
-     * @param user_name : The user name
-     *
-     * @return The thread with matching user_name, null otherwise.
+     * @param userName : The user name.
+     * @return         : The thread with matching userName, null otherwise.
      */
-    private synchronized Client_Thread get_thread(String user_name) {
-
-        for (Client_Thread t : THREADS) {
-            if (t.user_name.equals(user_name))
+    private synchronized ClientThread getThread(String userName) {
+        for (ClientThread t : threads)
+            if (t.userName.equals(userName))
                 return t;
-        }
         return null;
     }
 
     /**
      * Removes a given user from a given list.
-     *
-     * @param list      : The list to be traversed.
-     * @param user_name : The user name
+     * @param list     : The list to be traversed.
+     * @param userName : The user name.
      */
-    private synchronized void list_remove(
-                    CopyOnWriteArrayList<User_Record> list, String user_name) {
-
-        for (int i = 0; i < list.size(); i++) {
-            if (list.get(i).name.equals(user_name))
+    private synchronized void listRemove(CopyOnWriteArrayList<UserRecord> list,
+                                         String userName) {
+        for (int i = 0; i < list.size(); i++)
+            if (list.get(i).name.equals(userName))
                 list.remove(i);
-        }
     }
 
     /**
      * Checks if the given list contains the given user.
-     *
-     * @param list      : The list to be traversed.
-     * @param user_name : The user name to search for.
-     *
-     * @return True if user_name is in list, false otherwise.
+     * @param list     : The list to be traversed.
+     * @param userName : The user name to search for.
+     * @return         : True if userName is in list, False otherwise.
      */
-    private synchronized boolean list_contains(
-                    CopyOnWriteArrayList<User_Record> list, String user_name) {
-
-        for (User_Record r : list) {
-            if (r.name != null && r.name.equals(user_name))
+    private synchronized boolean listContains(
+                    CopyOnWriteArrayList<UserRecord> list, String userName) {
+        for (UserRecord r : list)
+            if (r.name != null && r.name.equals(userName))
                 return true;
-        }
         return false;
     }
 
     /**
      * Adds the thread to the list of current client threads.
+     * @param t : The client thread.
      */
-    private synchronized void add_thread(Client_Thread t) {
-        THREADS.add(t);
+    private synchronized void addThread(ClientThread t) {
+        threads.add(t);
     }
 
     /**
      * Removes the thread from the list of current client threads.
-     *
-     * @param t : The thread to be removed.
+     * @param t : The client thread.
      */
-    private synchronized void delete_thread(Client_Thread t) {
-        THREADS.remove(t);
+    private synchronized void deleteThread(ClientThread t) {
+        threads.remove(t);
     }
 
     /**
@@ -989,35 +930,35 @@ public class Server {
      * @param msg    : The message to be sent.
      * @param opt    : 1 - send to all online users, excluding sender.
      *               : 2 - send to all online users, excluding sender,
-     *                     without user_name.
+     *                     without userName.
      *               : 3 - send to only those names in the String users.
      */
-    private synchronized void send(Client_Thread sender, String msg, int opt,
+    private synchronized void send(ClientThread sender, String msg, int opt,
                                    String users) {
         switch (opt)
         {
             case 1:
-                for (Client_Thread receiver : THREADS) {
-                    if (receiver.logged_in && receiver != sender)
-                        receiver.pw.println("["+sender.user_name+"]: "+msg);
-                }
+                for (ClientThread receiver : threads)
+                    if (receiver.loggedIn && receiver != sender)
+                        receiver.pw.println("["+ sender.userName +"]: " + msg);
                 break;
+
             case 2:
-                for (Client_Thread receiver : THREADS) {
-                    if (receiver.logged_in && receiver != sender)
+                for (ClientThread receiver : threads)
+                    if (receiver.loggedIn && receiver != sender)
                         receiver.pw.println(msg);
-                }
                 break;
+
             case 3:
                 for (String recipient : users.split(" ")) {
-                    if (!sender.user_name.equals(recipient)) {
-                        Client_Thread recip;
-                        if (get_thread(recipient) != null) {
+                    if (!sender.userName.equals(recipient)) {
+                        ClientThread recip;
+                        if (getThread(recipient) != null) {
                             try {
-                                recip = get_thread(recipient);
+                                recip = getThread(recipient);
                                 if (recip != null)
-                                    recip.pw.println("[PM-"+sender.user_name+
-                                                     "]: "+msg);
+                                    recip.pw.println("[PM-" + sender.userName +
+                                                     "]: " + msg);
                             } catch (NullPointerException ignored) {}
                         }
                     }
@@ -1028,25 +969,26 @@ public class Server {
 
     /**
      * Validates the user login information.
-     * @param name          :  The plaintext username
-     * @return              :  0 - if password doesn't match username
-     *                      :  1 - if username/password match
-     *                      :  2 - if username is already online
-     *                      :  3 - if username is unknown
-     *                      : -1 - otherwise
+     * @param name : The username.
+     * @param pass : The password.
+     * @return     :  0 - if password doesn't match username
+     *                1 - if username/password match
+     *                2 - if username is already online
+     *                3 - if username is unknown
+     *               -1 - otherwise
      */
-    private synchronized int validate_login(String name, String pass) {
+    private synchronized int validateLogin(String name, String pass) {
 
         /* if user is already in the list of online users */
-        if (list_contains(ONLINE, name))
+        if (listContains(online, name))
             return 2;
 
-        /* read user_pass.txt contents */
+        /* read userPass.txt contents */
         Scanner scan = null;
         try {
-            scan = new Scanner(new FileReader(user_pass));
+            scan = new Scanner(new FileReader(userPass));
         } catch (FileNotFoundException e) {
-            log("Error: Could not open user_pass.txt to validate login.");
+            log("Error: Could not open userPass.txt to validate login.");
         }
 
         if (scan == null)
@@ -1054,14 +996,14 @@ public class Server {
 
         while (scan.hasNextLine()) {
 
-            /* tokenize the username and password in user_pass.txt */
-            String[] login_info = scan.nextLine().split(" ");
-            String u_name = login_info[0];
+            /* tokenize the username and password in userPass.txt */
+            String[] loginInfo = scan.nextLine().split(" ");
+            String uName = loginInfo[0];
 
             /* if the hashed name matches the one one file */
-            if (u_name.equals(get_hash(name))) {
-                String u_pass = login_info[1];
-                return u_pass.equals(get_hash(pass)) ? 1 : 0;
+            if (uName.equals(getHash(name))) {
+                String uPass = loginInfo[1];
+                return uPass.equals(getHash(pass)) ? 1 : 0;
             }
         }
 
@@ -1069,25 +1011,17 @@ public class Server {
         return 3;
     }
 
-    /**
-     * This class holds the user information to be used for online,
-     * offline, and blocked lists.
-     */
-    private class User_Record {
+    /*** Holds user info to be used for online, offline, and blocked lists. */
+    private class UserRecord {
 
         private String name;
         private String host;
         private String status;
-        private long time_out;
-        private String blocked_attempted_name;
-        private int blocked_name_attempts;
-        private long blocked_time_attempted;
+        private long timeout;
+        private String blockedAttemptedName;
+        private int blockedNameAttempts;
+        private long blockedTimeAttempted;
 
-        /**
-         * Returns a string representation of the object.
-         *
-         * @return String representation of the object.
-         */
         @Override
         public String toString() {
             return host;
@@ -1095,35 +1029,33 @@ public class Server {
 
         /**
          * Constructs a user record given a status.
-         *
          * @param t    : The client thread.
          * @param stat : The status.
          */
-        private User_Record(Client_Thread t, String stat) {
+        private UserRecord(ClientThread t, String stat) {
 
-            host = t.host_address;
+            host = t.hostAddress;
             status = stat;
 
             if (status.equals("Online")) {
-                name = t.user_name;
-                time_out = -1;
-                blocked_attempted_name = null;
-                blocked_name_attempts = -1;
-                blocked_time_attempted = -1;
+                name = t.userName;
+                timeout = -1;
+                blockedAttemptedName = null;
+                blockedNameAttempts = -1;
+                blockedTimeAttempted = -1;
 
-            } else if (status.equals("Offline_Not_Blocked")) {
-                name = t.user_name;
-                time_out = t.time_last_active;
-                blocked_attempted_name = null;
-                blocked_name_attempts = -1;
-                blocked_time_attempted = -1;
+            } else if (status.equals("OfflineNotBlocked")) {
+                name = t.userName;
+                timeout = t.timeLastActive;
+                blockedAttemptedName = null;
+                blockedNameAttempts = -1;
+                blockedTimeAttempted = -1;
             }
         }
     }
 
     /**
      * Server main entry point.
-     *
      * @param args : The server port number to listen on.
      */
     public static void main(String[] args) {
@@ -1135,9 +1067,9 @@ public class Server {
 
         try {
             Server s = new Server(new ServerSocket(Integer.parseInt(args[0])));
-            s.start_server();
+            s.startServer();
         } catch (IOException e) {
-            System.out.println("Unable to create socket on "+args[0]);
+            System.out.println("Unable to create socket on " + args[0]);
         }
     }
 }
