@@ -988,7 +988,7 @@ public class Server {
         try {
             scan = new Scanner(new FileReader(userPass));
         } catch (FileNotFoundException e) {
-            log("Error: Could not open userPass.txt to validate login.");
+            log("Error: Could not open UserPass to validate login.");
         }
 
         if (scan == null)
