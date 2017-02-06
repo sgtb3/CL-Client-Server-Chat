@@ -5,7 +5,7 @@ supply a file containing valid usernames and passwords that hosts can use to
 log in. A default set has been provided. Do not change the file name. A Makefile
 is also provided.
 
-##### Server.java
+#### Server.java
 - Needs to be run before the client.
 - Handles multiple, simultaneous clients.
 - Contains a thread running concurrently, checking for inactive clients.
@@ -18,18 +18,18 @@ will display an error message is the user's input does not conform.
 receives either a group or private message while offline, the server saves it 
 and displays it to the client upon logging in. It then deletes those messages.
 
-##### Client.java
+#### Client.java
 - Each client has their own thread to communicate with the server and runs 
 forever until either the server is shutdown, which in turns disconnects the 
 client, or the client terminates - either through an interrupt signal or 
 using the `logout` command.
 
 
-##### Makefile
+#### Makefile
 __make__ compiles the source files
 __make clean__ will clean all auxiliary files.
 
-##### UserPass
+#### UserPass
 - Contains only those usernames and passwords credentials that a client will be 
 able to use to log in. 
 - Needs to be in plain text and can only contain alphanumeric characters, 
@@ -43,12 +43,12 @@ in hexadecimal. Credentials need to be provided in the following format:
             <username> <password>
             ....
 
-##### Build and Run
+#### Build and Run
         make
         java Server <server port>
         java Client <server address> <server port>
 
-##### Usage
+#### Usage
 An example after successfully starting the server and client, and successful 
 authentication (user):
 
