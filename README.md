@@ -27,6 +27,7 @@ using the `logout` command.
 
 #### Makefile
 __make__ compiles the source files
+
 __make clean__ will clean all auxiliary files.
 
 #### UserPass
