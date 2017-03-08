@@ -594,7 +594,7 @@ public class Server {
             }
 
         } catch (NoSuchAlgorithmException e) {
-            log("Error: SHA-1 encryption failed.");
+            log("Error: SHA-1 hashing failed.");
         } catch (UnsupportedEncodingException e) {
             log("Error: UTF-8 Unsupported.");
         }
@@ -932,6 +932,7 @@ public class Server {
      *               : 2 - send to all online users, excluding sender,
      *                     without userName.
      *               : 3 - send to only those names in the String users.
+     * @param users  : Space separated list of recipients.
      */
     private synchronized void send(ClientThread sender, String msg, int opt,
                                    String users) {
